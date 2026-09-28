@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -27,6 +28,6 @@ class ServiceRead(ServiceBase):
     id: int
     is_active: bool
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

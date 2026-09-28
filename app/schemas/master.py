@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
 from app.models.enums import MasterPosition
 from app.schemas.user import UserRead
 
@@ -30,7 +32,8 @@ class MasterRead(MasterBase):
     user_id: int
     is_active: bool
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
+
     user: UserRead
 
     model_config = ConfigDict(from_attributes=True)

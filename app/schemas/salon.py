@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.models.enums import SalonType
+from app.schemas.user import UserRead
 
 
 class SalonBase(BaseModel):
@@ -28,6 +31,6 @@ class SalonRead(SalonBase):
     owner_id: int
     is_active: bool
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
