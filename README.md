@@ -31,7 +31,7 @@
 
 - **Backend:** Python 3.11+, FastAPI, Pydantic
 - **БД:** PostgreSQL, SQLAlchemy, Alembic
-- **Аутентификация:** JWT (если уже есть / планируется)
+- **Аутентификация:** JWT (планируется)
 - **Инфраструктура:** Docker, Docker Compose
 - **Тесты:** pytest (планируется)
 
