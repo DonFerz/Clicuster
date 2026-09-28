@@ -1,5 +1,4 @@
 from collections.abc import AsyncGenerator
-
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -7,29 +6,21 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import settings
+from app.models.base import Base
 
 
 engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    future=True,
 )
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
+async_session_maker = async_sessionmaker(
+    engine,
     expire_on_commit=False,
-    autoflush=False,
 )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI-зависимость: даёт сессию БД с автоматическим откатом при ошибке."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
+    async with async_session_maker() as session:
+        yield session

@@ -7,6 +7,14 @@ from .service import Service
 from .appointment import Appointment
 
 __all__ = [
-    "Base", "UserRole", "SalonType", "MasterPosition", "RecordStatus",
-    "User", "Salon", "Master", "Service", "Appointment",
+    "Base",
+    "UserRole",
+    "SalonType",
+    "MasterPosition",
+    "RecordStatus",
+    "User",
+    "Salon",
+    "Master",
+    "Service",
+    "Appointment",
 ]

@@ -1,87 +1,66 @@
 from functools import lru_cache
-from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env",
+        env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",
         case_sensitive=False,
+        extra="ignore",
     )
 
-    # --- App ---
-    app_name: str = "clicuster"
-    app_env: Literal["development", "staging", "production"] = Field(
-        default="development",
-        validation_alias=AliasChoices("app_env", "ENVIRONMENT"),
-    )
-    debug: bool = True
+    # ── Application ──
+    APP_NAME: str = "Clicuster"
+    APP_ENV: Literal["local", "dev", "prod"] = "local"
+    DEBUG: bool = False
+    API_V1_PREFIX: str = "/api/v1"
 
-    # --- API ---
-    api_v1_prefix: str = "/api/v1"
+    # ── Security ──
+    SECRET_KEY: str = Field(..., min_length=32)
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # --- CORS ---
-    cors_origins: str = "http://localhost:3000,http://localhost:8000"
+    # ── Database ──
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_DB: str = "clicuster_db"
 
-    # --- PostgreSQL ---
-    # Прямой URL имеет приоритет. Если пуст — соберём из частей ниже.
-    database_url: Optional[str] = None
+    # ── Redis ──
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
 
-    postgres_user: str = "clicuster"
-    postgres_password: str = "clicuster"
-    postgres_db: str = "clicuster"
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
+    # ── CORS ──
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
-    # --- Redis ---
-    redis_url: Optional[str] = None
-    redis_host: str = "localhost"
-    redis_port: int = 6379
-    redis_db: int = 0
-
-    # --- JWT ---
-    jwt_secret_key: str = Field(
-        default="change-me-in-production",
-        validation_alias=AliasChoices("jwt_secret_key", "SECRET_KEY"),
-    )
-    jwt_algorithm: str = Field(
-        default="HS256",
-        validation_alias=AliasChoices("jwt_algorithm", "ALGORITHM"),
-    )
-    jwt_access_token_expire_minutes: int = Field(
-        default=30,
-        validation_alias=AliasChoices(
-            "jwt_access_token_expire_minutes", "ACCESS_TOKEN_EXPIRE_MINUTES"
-        ),
-    )
-    jwt_refresh_token_expire_days: int = Field(
-        default=7,
-        validation_alias=AliasChoices(
-            "jwt_refresh_token_expire_days", "REFRESH_TOKEN_EXPIRE_DAYS"
-        ),
-    )
-
-    @model_validator(mode="after")
-    def _fill_urls(self) -> "Settings":
-        if not self.database_url:
-            self.database_url = (
-                f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-            )
-        if not self.redis_url:
-            self.redis_url = f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-        return self
-
+    # ── Собирается автоматически ──
+    @computed_field
     @property
-    def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+    def DATABASE_URL(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @computed_field
+    @property
+    def SYNC_DATABASE_URL(self) -> str:
+        return (
+            f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @computed_field
+    @property
+    def REDIS_URL(self) -> str:
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
 
 @lru_cache
