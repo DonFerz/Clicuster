@@ -17,10 +17,9 @@ class MasterPosition(str, enum.Enum):
     MASTER = "master"
     TOP_MASTER = "top_master"
 
+
 class RecordStatus(str, enum.Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
-
-    
