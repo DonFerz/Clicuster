@@ -9,7 +9,7 @@ from app.schemas.user import UserCreate, UserUpdate
 
 
 async def create_user(database: AsyncSession, data: UserCreate) -> User:
-    """Создание нового пользователя. Пароль будет хэшироваться."""
+    """Создание нового пользователя."""
     user = User(
         full_name=data.full_name,
         email=data.email,
@@ -19,7 +19,6 @@ async def create_user(database: AsyncSession, data: UserCreate) -> User:
     database.add(user)
     try:
         await database.commit()
-        await database.refresh(user)
     except Exception:
         await database.rollback()
         raise
@@ -67,7 +66,6 @@ async def update_user(
 
     try:
         await database.commit()
-        await database.refresh(user)
     except Exception:
         await database.rollback()
         raise
