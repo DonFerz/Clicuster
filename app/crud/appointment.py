@@ -2,9 +2,32 @@ from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.appointment import Appointment
+from app.models.master import Master
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
+
+
+# Цепочка eager-загрузки: у записи есть master (а у master — user),
+# client и service. Все три нужны для AppointmentRead.
+_APPOINTMENT_LOAD_OPTIONS = (
+    selectinload(Appointment.master).selectinload(Master.user),
+    selectinload(Appointment.client),
+    selectinload(Appointment.service),
+)
+
+
+async def _get_appointment_full(
+    database: AsyncSession, appointment_id: int
+) -> Appointment:
+    """Внутренний хелпер: загружает запись со всеми вложенными сущностями."""
+    result = await database.execute(
+        select(Appointment)
+        .where(Appointment.id == appointment_id)
+        .options(*_APPOINTMENT_LOAD_OPTIONS)
+    )
+    return result.scalar_one()
 
 
 async def create_appointment(
@@ -23,21 +46,22 @@ async def create_appointment(
     database.add(appointment)
     try:
         await database.commit()
-        await database.refresh(appointment)
     except Exception:
         await database.rollback()
         raise
 
-    return appointment
+    return await _get_appointment_full(database, appointment.id)
 
 
 async def get_appointment(
     database: AsyncSession,
     appointment_id: int,
 ) -> Appointment | None:
-    """Поиск записи по id. Если запись не найдена, возвращается None."""
+    """Поиск записи по id. Все вложенные сущности загружаются сразу."""
     result = await database.execute(
-        select(Appointment).where(Appointment.id == appointment_id)
+        select(Appointment)
+        .where(Appointment.id == appointment_id)
+        .options(*_APPOINTMENT_LOAD_OPTIONS)
     )
 
     return result.scalar_one_or_none()
@@ -48,9 +72,13 @@ async def get_appointments(
     skip: int = 0,
     limit: int = 20,
 ) -> Sequence[Appointment]:
-    """Список всех записей с пагинацией."""
+    """Список всех записей с пагинацией. Вложенные сущности загружаются сразу."""
     result = await database.execute(
-        select(Appointment).order_by(Appointment.id).offset(skip).limit(limit)
+        select(Appointment)
+        .options(*_APPOINTMENT_LOAD_OPTIONS)
+        .order_by(Appointment.id)
+        .offset(skip)
+        .limit(limit)
     )
 
     return result.scalars().all()
@@ -62,10 +90,11 @@ async def get_appointments_by_client(
     skip: int = 0,
     limit: int = 20,
 ) -> Sequence[Appointment]:
-    """Записи конкретного клиента."""
+    """Записи конкретного клиента. Вложенные сущности загружаются сразу."""
     result = await database.execute(
         select(Appointment)
         .where(Appointment.client_id == client_id)
+        .options(*_APPOINTMENT_LOAD_OPTIONS)
         .order_by(Appointment.id)
         .offset(skip)
         .limit(limit)
@@ -80,10 +109,11 @@ async def get_appointments_by_master(
     skip: int = 0,
     limit: int = 20,
 ) -> Sequence[Appointment]:
-    """Записи конкретного мастера."""
+    """Записи конкретного мастера. Вложенные сущности загружаются сразу."""
     result = await database.execute(
         select(Appointment)
         .where(Appointment.master_id == master_id)
+        .options(*_APPOINTMENT_LOAD_OPTIONS)
         .order_by(Appointment.id)
         .offset(skip)
         .limit(limit)
@@ -97,7 +127,7 @@ async def update_appointment(
     appointment: Appointment,
     data: AppointmentUpdate,
 ) -> Appointment:
-    """Обновление переданных полей записи. Остальные поля остаются без изменений."""
+    """Обновление переданных полей записи."""
     update_data = data.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
@@ -105,12 +135,11 @@ async def update_appointment(
 
     try:
         await database.commit()
-        await database.refresh(appointment)
     except Exception:
         await database.rollback()
         raise
 
-    return appointment
+    return await _get_appointment_full(database, appointment.id)
 
 
 async def delete_appointment(
