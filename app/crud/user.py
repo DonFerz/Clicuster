@@ -1,11 +1,11 @@
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-# from app.core.security import hash_password
 
 
 async def create_user(database: AsyncSession, data: UserCreate) -> User:
@@ -14,49 +14,72 @@ async def create_user(database: AsyncSession, data: UserCreate) -> User:
         full_name=data.full_name,
         email=data.email,
         phone=data.phone,
-        hashed_password=data.password,  # TODO: заменить на hash_password(data.password)
+        hashed_password=data.password,  # TODO: hash_password(data.password)
     )
     database.add(user)
-    await database.commit()
-    await database.refresh(user)
+    try:
+        await database.commit()
+        await database.refresh(user)
+    except Exception:
+        await database.rollback()
+        raise
 
     return user
 
 
-async def get_user(database: AsyncSession, user_id: int) -> Optional[User]:
+async def get_user(database: AsyncSession, user_id: int) -> User | None:
     """Поиск пользователя по id. Если пользователь не найден, возвращается None."""
     result = await database.execute(select(User).where(User.id == user_id))
 
     return result.scalar_one_or_none()
 
 
-async def get_user_by_email(database: AsyncSession, email: str) -> Optional[User]:
+async def get_user_by_email(database: AsyncSession, email: str) -> User | None:
     """Поиск пользователя по email. Если пользователь не найден, возвращается None."""
     result = await database.execute(select(User).where(User.email == email))
 
     return result.scalar_one_or_none()
 
 
-async def get_users(database: AsyncSession, skip: int = 0, limit: int = 20) -> Sequence[User]:
+async def get_users(
+    database: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+) -> Sequence[User]:
     """Получение списка пользователей с пагинацией."""
-    result = await database.execute(select(User).offset(skip).limit(limit))
+    result = await database.execute(
+        select(User).order_by(User.id).offset(skip).limit(limit)
+    )
 
     return result.scalars().all()
 
 
-async def update_user(database: AsyncSession, user: User, data: UserUpdate) -> User:
-    """Обновление переданных полей. Остальные поля остаются без изменений."""
+async def update_user(
+    database: AsyncSession,
+    user: User,
+    data: UserUpdate,
+) -> User:
+    """Обновление переданных полей user. Остальные поля остаются без изменений."""
     update_data = data.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
         setattr(user, field, value)
-    await database.commit()
-    await database.refresh(user)
+
+    try:
+        await database.commit()
+        await database.refresh(user)
+    except Exception:
+        await database.rollback()
+        raise
 
     return user
 
 
 async def delete_user(database: AsyncSession, user: User) -> None:
     """Удаление пользователя."""
-    await database.delete(user)
-    await database.commit()
+    try:
+        await database.delete(user)
+        await database.commit()
+    except Exception:
+        await database.rollback()
+        raise
