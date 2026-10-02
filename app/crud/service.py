@@ -19,7 +19,6 @@ async def create_service(database: AsyncSession, data: ServiceCreate) -> Service
     database.add(service)
     try:
         await database.commit()
-        await database.refresh(service)
     except Exception:
         await database.rollback()
         raise
@@ -78,7 +77,6 @@ async def update_service(
 
     try:
         await database.commit()
-        await database.refresh(service)
     except Exception:
         await database.rollback()
         raise
