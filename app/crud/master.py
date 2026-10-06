@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.security import hash_password
 from app.models.enums import UserRole
 from app.models.master import Master
 from app.models.user import User
@@ -33,7 +34,7 @@ async def create_master(database: AsyncSession, data: MasterCreate) -> Master:
             full_name=data.full_name,
             email=data.email,
             phone=data.phone,
-            hashed_password=data.password,  # TODO: hash_password(data.password)
+            hashed_password=hash_password(data.password),
             role=UserRole.MASTER,
         )
         database.add(user)
