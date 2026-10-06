@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+import json
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import quote
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,50 +24,122 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # ── Security ──
-    SECRET_KEY: str = Field(..., min_length=32)
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    SECRET_KEY: str = ""
+    ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, gt=0)
+
+    # ── JWT issuer / audience ──
+    JWT_ISSUER: str = "clicuster"
+    JWT_AUDIENCE: str = "clicuster-api"
 
     # ── Database ──
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = Field(default=5432, gt=0, le=65535)
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "clicuster_db"
 
     # ── Redis ──
     REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
+    REDIS_PORT: int = Field(default=6379, gt=0, le=65535)
+    REDIS_DB: int = Field(default=0, ge=0)
+    REDIS_PASSWORD: str = ""
 
     # ── CORS ──
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # В .env можно писать либо JSON:  CORS_ORIGINS=["http://a","http://b"]
+    # либо через запятую:            CORS_ORIGINS=http://a,http://b
+    CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
-    # ── Собирается автоматически ──
+    # ─────────── Validators ───────────
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: object) -> object:
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return []
+            if s.startswith("["):
+                try:
+                    parsed = json.loads(s)
+                    if not isinstance(parsed, list):
+                        raise ValueError("CORS_ORIGINS JSON must be a list")
+                    return parsed
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        "CORS_ORIGINS looks like JSON but is not valid JSON"
+                    ) from exc
+            return [item.strip() for item in s.split(",") if item.strip()]
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def _validate_secret_key(cls, v: str) -> str:
+        if not v:
+            raise ValueError("SECRET_KEY is required (set it in .env)")
+        if len(v.encode("utf-8")) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 bytes")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_env_specific(self) -> "Settings":
+        if self.APP_ENV == "prod":
+            if self.DEBUG:
+                raise ValueError("DEBUG must be False in prod")
+
+            # Не разрешаем дефолтные секреты в проде
+            if self.SECRET_KEY.startswith(("change-me", "dev", "test")):
+                raise ValueError("SECRET_KEY looks like a placeholder for prod")
+
+            if self.POSTGRES_PASSWORD == "postgres":
+                raise ValueError(
+                    "POSTGRES_PASSWORD must be changed for prod"
+                )
+
+            # CORS в проде: только https, никаких '*'
+            for origin in self.CORS_ORIGINS:
+                if origin == "*":
+                    raise ValueError("Wildcard CORS origin is not allowed in prod")
+                if origin.startswith("http://") and not origin.startswith(
+                    "http://localhost"
+                ):
+                    raise ValueError(
+                        f"Insecure CORS origin in prod: {origin}"
+                    )
+
+        return self
+
+    # ─────────── Computed URLs ───────────
+    def _build_db_url(self, driver: str) -> str:
+        user = quote(self.POSTGRES_USER, safe="")
+        password = quote(self.POSTGRES_PASSWORD, safe="")
+        return (
+            f"postgresql+{driver}://{user}:{password}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        return self._build_db_url("asyncpg")
 
     @computed_field
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        return (
-            f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        return self._build_db_url("psycopg2")
 
     @computed_field
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        auth = (
+            f":{quote(self.REDIS_PASSWORD, safe='')}@"
+            if self.REDIS_PASSWORD
+            else ""
+        )
+        return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
 
-@lru_cache
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
 
