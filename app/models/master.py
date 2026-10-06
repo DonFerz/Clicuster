@@ -37,5 +37,4 @@ class Master(Base, TimestampMixin):
         secondary="master_services",
         back_populates="masters"
     )
-    appointments: Mapped[list["Appointment"]
-                         ] = relationship(back_populates="master")
+    appointments: Mapped[list["Appointment"]] = relationship(back_populates="master")
