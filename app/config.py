@@ -87,7 +87,6 @@ class Settings(BaseSettings):
             if self.DEBUG:
                 raise ValueError("DEBUG must be False in prod")
 
-            # Не разрешаем дефолтные секреты в проде
             if self.SECRET_KEY.startswith(("change-me", "dev", "test")):
                 raise ValueError("SECRET_KEY looks like a placeholder for prod")
 
