@@ -40,16 +40,21 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "clicuster_db"
 
+    # Пул соединений SQLAlchemy.
+
+    DB_POOL_SIZE: int = Field(default=5, gt=0)
+    DB_MAX_OVERFLOW: int = Field(default=10, ge=0)
+    DB_POOL_TIMEOUT: int = Field(default=30, gt=0)
+    DB_POOL_RECYCLE: int = Field(default=1800, gt=0)
+    DB_POOL_PRE_PING: bool = True
+
     # ── Redis ──
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = Field(default=6379, gt=0, le=65535)
     REDIS_DB: int = Field(default=0, ge=0)
     REDIS_PASSWORD: str = ""
 
-    # ── CORS ──
-    # В .env можно писать либо JSON:  CORS_ORIGINS=["http://a","http://b"]
-    # либо через запятую:            CORS_ORIGINS=http://a,http://b
-    CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     # ─────────── Validators ───────────
     @field_validator("CORS_ORIGINS", mode="before")
@@ -88,23 +93,29 @@ class Settings(BaseSettings):
                 raise ValueError("DEBUG must be False in prod")
 
             if self.SECRET_KEY.startswith(("change-me", "dev", "test")):
-                raise ValueError("SECRET_KEY looks like a placeholder for prod")
+                raise ValueError(
+                    "SECRET_KEY looks like a placeholder for prod")
 
             if self.POSTGRES_PASSWORD == "postgres":
+                raise ValueError("POSTGRES_PASSWORD must be changed for prod")
+
+            max_per_worker = self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW
+            if max_per_worker > 50:
                 raise ValueError(
-                    "POSTGRES_PASSWORD must be changed for prod"
+                    f"DB pool too large for prod: {max_per_worker} per worker. "
+                    "Reduce DB_POOL_SIZE/DB_MAX_OVERFLOW "
+                    "or raise Postgres max_connections."
                 )
 
             # CORS в проде: только https, никаких '*'
             for origin in self.CORS_ORIGINS:
                 if origin == "*":
-                    raise ValueError("Wildcard CORS origin is not allowed in prod")
+                    raise ValueError(
+                        "Wildcard CORS origin is not allowed in prod")
                 if origin.startswith("http://") and not origin.startswith(
                     "http://localhost"
                 ):
-                    raise ValueError(
-                        f"Insecure CORS origin in prod: {origin}"
-                    )
+                    raise ValueError(f"Insecure CORS origin in prod: {origin}")
 
         return self
 
