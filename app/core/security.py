@@ -17,6 +17,29 @@ pwd_context = CryptContext(
 )
 
 
+# ─────────── Startup checks ───────────
+# Выполняются один раз при импорте модуля.
+
+_ALLOWED_ALGORITHMS: frozenset[str] = frozenset(
+    {
+        "HS256", "HS384", "HS512",
+        "RS256", "RS384", "RS512",
+        "ES256", "ES384", "ES512",
+    }
+)
+
+if settings.ALGORITHM not in _ALLOWED_ALGORITHMS:
+    raise RuntimeError(
+        f"Unsupported JWT algorithm: {settings.ALGORITHM!r}. "
+        f"Allowed: {sorted(_ALLOWED_ALGORITHMS)}"
+    )
+
+if settings.ALGORITHM.startswith("HS") and len(settings.SECRET_KEY.encode()) < 32:
+    raise RuntimeError(
+        "SECRET_KEY must be at least 32 bytes for HMAC algorithms (RFC 7518)."
+    )
+
+
 # ─────────── Passwords ───────────
 
 def hash_password(password: str) -> str:
@@ -102,25 +125,22 @@ def decode_token(
     Если expected_type задан — проверяет claim "type".
     Бросает JWTError при любой проблеме.
     """
-    try:
-        payload: dict[str, Any] = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
-            audience=settings.JWT_AUDIENCE,
-            issuer=settings.JWT_ISSUER,
-            options={
-                "require_exp": True,
-                "require_iat": True,
-                "require_nbf": True,
-                "require_sub": True,
-                "verify_aud": True,
-                "verify_iss": True,
-                "verify_signature": True,
-            },
-        )
-    except JWTError:
-        raise
+    payload: dict[str, Any] = jwt.decode(
+        token,
+        settings.SECRET_KEY,
+        algorithms=[settings.ALGORITHM],
+        audience=settings.JWT_AUDIENCE,
+        issuer=settings.JWT_ISSUER,
+        options={
+            "require_exp": True,
+            "require_iat": True,
+            "require_nbf": True,
+            "require_sub": True,
+            "verify_aud": True,
+            "verify_iss": True,
+            "verify_signature": True,
+        },
+    )
 
     if expected_type is not None and payload.get("type") != expected_type:
         raise JWTError(
