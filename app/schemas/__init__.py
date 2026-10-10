@@ -8,6 +8,7 @@ from app.schemas.master import MasterBase, MasterCreate, MasterRead, MasterUpdat
 from app.schemas.salon import SalonBase, SalonCreate, SalonRead, SalonUpdate
 from app.schemas.service import ServiceBase, ServiceCreate, ServiceRead, ServiceUpdate
 from app.schemas.user import UserBase, UserCreate, UserRead, UserUpdate
+from app.schemas.auth import TokenPair, TokenPayload, RefreshRequest
 
 __all__ = [
     "AppointmentBase",
@@ -30,4 +31,7 @@ __all__ = [
     "UserCreate",
     "UserRead",
     "UserUpdate",
+    "TokenPair",
+    "TokenPayload",
+    "RefreshRequest",
 ]
