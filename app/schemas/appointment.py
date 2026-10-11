@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import RecordStatus
 from app.schemas.master import MasterRead
 from app.schemas.service import ServiceRead
-from app.schemas.user import UserRead
+from app.schemas.user import UserPublic
 
 
 class AppointmentBase(BaseModel):
@@ -15,7 +15,7 @@ class AppointmentBase(BaseModel):
     master_id: int
     client_id: int
     service_id: int
-    comment: Optional[str] = Field(None, max_length=500)
+    comment: Optional[str] = Field(default=None, max_length=500)
 
 
 class AppointmentCreate(AppointmentBase):
@@ -23,22 +23,24 @@ class AppointmentCreate(AppointmentBase):
 
 
 class AppointmentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     master_id: Optional[int] = None
     service_id: Optional[int] = None
     status: Optional[RecordStatus] = None
-    comment: Optional[str] = Field(None, max_length=500)
+    comment: Optional[str] = Field(default=None, max_length=500)
 
 
 class AppointmentRead(AppointmentBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     status: RecordStatus
     created_at: datetime
     updated_at: datetime
 
     master: MasterRead
-    client: UserRead
+    client: UserPublic
     service: ServiceRead
-
-    model_config = ConfigDict(from_attributes=True)
