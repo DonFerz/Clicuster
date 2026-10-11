@@ -8,6 +8,11 @@ from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
 
+_UPDATABLE_USER_FIELDS: frozenset[str] = frozenset(
+    {"full_name", "email", "phone"}
+)
+
+
 async def create_user(database: AsyncSession, data: UserCreate) -> User:
     """Создание нового пользователя."""
     user = User(
@@ -62,10 +67,30 @@ async def update_user(
     update_data = data.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
+        if field not in _UPDATABLE_USER_FIELDS:
+            continue
         setattr(user, field, value)
 
     try:
         await database.commit()
+        await database.refresh(user)
+    except Exception:
+        await database.rollback()
+        raise
+
+    return user
+
+
+async def set_user_password(
+    database: AsyncSession,
+    user: User,
+    hashed_password: str,
+) -> User:
+    """Устанавливает новый хеш пароля. Используется для rehash и смены пароля."""
+    user.hashed_password = hashed_password
+    try:
+        await database.commit()
+        await database.refresh(user)
     except Exception:
         await database.rollback()
         raise
