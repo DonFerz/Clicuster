@@ -1,4 +1,6 @@
-"""Логика аутентификации: проверка пароля, регистрация, выдача токенов."""
+"""
+Логика аутентификации: проверка пароля, регистрация, выдача токенов.
+"""
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +21,7 @@ from app.crud.user import (
 )
 from app.models.user import User
 from app.schemas.auth import TokenPair
-from app.schemas.user import PasswordChange, UserCreate
+from app.schemas.user import UserCreate, PasswordChange
 
 
 # Фиктивный хеш, чтобы время ответа не зависело от существования email.
@@ -70,7 +72,6 @@ async def register_user(database: AsyncSession, data: UserCreate) -> User:
 
 def issue_tokens(user: User) -> TokenPair:
     """Выдаёт пару access + refresh токенов для пользователя."""
-
     if not user.is_active:
         raise AuthenticationError("User is not active")
 
