@@ -17,10 +17,11 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # запрещает лишние поля
+
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, min_length=5, max_length=20)
-    is_active: Optional[bool] = None
 
 
 class UserRead(UserBase):
