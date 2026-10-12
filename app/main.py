@@ -1,70 +1,103 @@
-from contextlib import asynccontextmanager
+"""Точка входа FastAPI-приложения.
+Запуск в разработке: uvicorn app.main:app --reload
+"""
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 
 from app.config import settings
-from app.database import engine
-from app.redis_client import close_redis, get_redis, init_redis
+from app.core.exceptions import AppError
+from app.api.auth import router as auth_router
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    await init_redis()
-    yield
-    # Shutdown
-    await close_redis()
-    await engine.dispose()
+# ─────────── Логирование ───────────
+logger = logging.getLogger(__name__)
 
 
+# ─────────── Приложение ───────────
 app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    debug=settings.debug,
-    lifespan=lifespan,
+    title=settings.APP_NAME,
+    debug=settings.DEBUG,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
-# CORS
+
+# ─────────── CORS ───────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    # Если в origins есть "*", credentials должны быть выключены,
+    # иначе браузеры отклоняют такие ответы.
+    allow_credentials="*" not in settings.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/health", tags=["health"])
-async def health() -> dict[str, str]:
-    """Liveness-проверка: приложение живо."""
-    return {"status": "ok", "env": settings.app_env}
-
-
-@app.get("/health/ready", tags=["health"])
-async def readiness() -> JSONResponse:
-    """Readiness-проверка: БД и Redis доступны."""
-    checks: dict[str, str] = {}
-
-    # PostgreSQL
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        checks["database"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        checks["database"] = f"error: {exc}"
-
-    # Redis
-    try:
-        await get_redis().ping()
-        checks["redis"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        checks["redis"] = f"error: {exc}"
-
-    is_healthy = all(value == "ok" for value in checks.values())
-    return JSONResponse(
-        content={"status": "ok" if is_healthy else "degraded", "checks": checks},
-        status_code=200 if is_healthy else 503,
+# ─────────── Хендлеры исключений ───────────
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    """Превращает наши AppError-исключения в JSON-ответ.
+    (из app/core/exceptions.py).
+    """
+    logger.log(
+        exc.log_level,
+        "%s %s → %s: %s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+        exc_info=exc.log_traceback,
     )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict(),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Ловит всё, что не поймано выше — 500 Internal Server Error."""
+    logger.exception(
+        "Unhandled error on %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "code": "internal_error",
+            "detail": "Internal server error",
+        },
+    )
+
+
+# ─────────── Подключение роутеров ───────────
+app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.get(
+    "/health",
+    tags=["service"],
+    summary="Health check",
+)
+async def health() -> dict[str, str]:
+    """Проверка — работает ли приложение."""
+    return {"status": "ok"}
+
+
+@app.get(
+    "/",
+    tags=["service"],
+    summary="Корень API",
+)
+async def root() -> dict[str, str]:
+    """Информация о приложении."""
+    return {
+        "name": settings.APP_NAME,
+        "docs": app.docs_url or "/docs",
+        "version": getattr(settings, "VERSION", "0.1.0"),
+    }
