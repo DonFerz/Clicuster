@@ -20,14 +20,18 @@ async def _get_salon_with_owner(
     return result.scalar_one()
 
 
-async def create_salon(database: AsyncSession, data: SalonCreate) -> Salon:
-    """Создание нового салона. Возвращает салон с загруженным владельцем."""
+async def create_salon(
+    database: AsyncSession,
+    data: SalonCreate,
+    owner_id: int,
+) -> Salon:
+    """Создаёт салон от имени указанного владельца."""
     salon = Salon(
         name=data.name,
         address=data.address,
         phone=data.phone,
         type=data.type,
-        owner_id=data.owner_id,
+        owner_id=owner_id,
     )
     database.add(salon)
     try:
@@ -35,7 +39,6 @@ async def create_salon(database: AsyncSession, data: SalonCreate) -> Salon:
     except Exception:
         await database.rollback()
         raise
-
     return await _get_salon_with_owner(database, salon.id)
 
 
