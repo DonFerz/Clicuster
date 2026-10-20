@@ -86,16 +86,13 @@ async def list_my_salons(
     current_user: CurrentUser,
     pagination: PaginationDep,
 ) -> list[Salon]:
-    """Все салоны, где текущий пользователь — owner.
-
-    Пагинация применяется на стороне роутера (срез результата), чтобы
-    не менять сигнатуру `get_salons_by_owner` в CRUD. Когда в CRUD
-    появятся `skip`/`limit` — переключимся на них без изменения API.
-    """
-    salons = list(await get_salons_by_owner(db, current_user.id))
-    start = pagination.skip
-    end = start + pagination.limit
-    return salons[start:end]
+    salons = await get_salons_by_owner(
+        db,
+        current_user.id,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+    return list(salons)
 
 
 # ВАЖНО: все статические пути (/my, /featured, ...) должны быть

@@ -76,7 +76,6 @@ async def get_salons_by_owner(
     skip: int = 0,
     limit: int = 10,
 ) -> Sequence[Salon]:
-    """Список салонов конкретного владельца. Владельцы загружаются сразу."""
     result = await database.execute(
         select(Salon)
         .where(Salon.owner_id == owner_id)
@@ -85,7 +84,6 @@ async def get_salons_by_owner(
         .offset(skip)
         .limit(limit)
     )
-
     return result.scalars().all()
 
 
