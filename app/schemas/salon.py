@@ -15,7 +15,7 @@ class SalonBase(BaseModel):
 
 
 class SalonCreate(SalonBase):
-    owner_id: int
+    model_config = ConfigDict(extra="forbid")
 
 
 class SalonUpdate(BaseModel):
