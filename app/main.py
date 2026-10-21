@@ -7,6 +7,8 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 
 from app.config import settings
 from app.core.exceptions import AppError
@@ -74,6 +76,18 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
             "code": "internal_error",
             "detail": "Internal server error",
         },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request, exc):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=jsonable_encoder({
+            "code": "validation_error",
+            "detail": "Validation error",
+            "errors": exc.errors(),
+        }),
     )
 
 
