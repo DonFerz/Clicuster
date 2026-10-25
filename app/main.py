@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.salons import router as salons_router
 from app.api.services import router as services_router
+from app.api.masters import router as masters_router
 
 
 # ─────────── Логирование ───────────
@@ -97,6 +98,7 @@ app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router, prefix=settings.API_V1_PREFIX)
 app.include_router(salons_router, prefix=settings.API_V1_PREFIX)
 app.include_router(services_router, prefix=settings.API_V1_PREFIX)
+app.include_router(masters_router,prefix=settings.API_V1_PREFIX)
 
 
 @app.get(
@@ -131,4 +133,4 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         reload=True,
-    )
+    )                       # для запуска из терминала python -m app.main
