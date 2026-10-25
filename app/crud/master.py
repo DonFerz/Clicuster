@@ -51,12 +51,15 @@ async def create_master(database: AsyncSession, data: MasterCreate) -> Master:
             description=data.description,
         )
         database.add(master)
+        await database.flush()  # получаем master.id до commit
+        master_id = master.id
         await database.commit()
     except Exception:
         await database.rollback()
         raise
 
-    return await _get_master_with_user(database, master.id)
+    # master_id зафиксирован до commit — не зависим от expire_on_commit.
+    return await _get_master_with_user(database, master_id)
 
 
 async def get_master(database: AsyncSession, master_id: int) -> Master | None:
@@ -137,13 +140,16 @@ async def update_master(
     for field, value in update_data.items():
         setattr(master, field, value)
 
+    # Фиксируем id до commit — не зависим от expire_on_commit.
+    master_id = master.id
+
     try:
         await database.commit()
     except Exception:
         await database.rollback()
         raise
 
-    return await _get_master_with_user(database, master.id)
+    return await _get_master_with_user(database, master_id)
 
 
 async def delete_master(database: AsyncSession, master: Master) -> None:
@@ -163,12 +169,8 @@ async def add_service_to_master(
 ) -> None:
     """Идемпотентно привязывает услугу к мастеру.
 
-    Требует, чтобы `master.services` был eager-загружен —
-    используй `get_master_with_services` (не `get_master`),
-    иначе обращение к `master.services` в async упадёт
-    с MissingGreenlet.
-
-    Если услуга уже привязана — no-op (без ошибки, без коммита).
+    Требует eager-загруженного `master.services`
+    (см. `get_master_with_services`).
     """
     if service not in master.services:
         master.services.append(service)
@@ -188,8 +190,6 @@ async def remove_service_from_master(
 
     Требует eager-загруженного `master.services`
     (см. `get_master_with_services`).
-
-    Если услуга не привязана — no-op.
     """
     if service in master.services:
         master.services.remove(service)
