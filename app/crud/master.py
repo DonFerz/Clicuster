@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.core.security import hash_password
 from app.models.enums import UserRole
 from app.models.master import Master
+from app.models.service import Service
 from app.models.user import User
 from app.schemas.master import MasterCreate, MasterUpdate
 
@@ -64,6 +65,26 @@ async def get_master(database: AsyncSession, master_id: int) -> Master | None:
         select(Master)
         .where(Master.id == master_id)
         .options(selectinload(Master.user))
+    )
+
+    return result.scalar_one_or_none()
+
+
+async def get_master_with_services(
+    database: AsyncSession, master_id: int
+) -> Master | None:
+    """Поиск мастера по id с eager-загрузкой user и services.
+
+    Используется для управления услугами мастера (attach/detach),
+    где нужны обе связи без MissingGreenlet.
+    """
+    result = await database.execute(
+        select(Master)
+        .where(Master.id == master_id)
+        .options(
+            selectinload(Master.user),
+            selectinload(Master.services),
+        )
     )
 
     return result.scalar_one_or_none()
@@ -133,3 +154,47 @@ async def delete_master(database: AsyncSession, master: Master) -> None:
     except Exception:
         await database.rollback()
         raise
+
+
+async def add_service_to_master(
+    database: AsyncSession,
+    master: Master,
+    service: Service,
+) -> None:
+    """Идемпотентно привязывает услугу к мастеру.
+
+    Требует, чтобы `master.services` был eager-загружен —
+    используй `get_master_with_services` (не `get_master`),
+    иначе обращение к `master.services` в async упадёт
+    с MissingGreenlet.
+
+    Если услуга уже привязана — no-op (без ошибки, без коммита).
+    """
+    if service not in master.services:
+        master.services.append(service)
+        try:
+            await database.commit()
+        except Exception:
+            await database.rollback()
+            raise
+
+
+async def remove_service_from_master(
+    database: AsyncSession,
+    master: Master,
+    service: Service,
+) -> None:
+    """Идемпотентно убирает услугу у мастера.
+
+    Требует eager-загруженного `master.services`
+    (см. `get_master_with_services`).
+
+    Если услуга не привязана — no-op.
+    """
+    if service in master.services:
+        master.services.remove(service)
+        try:
+            await database.commit()
+        except Exception:
+            await database.rollback()
+            raise
