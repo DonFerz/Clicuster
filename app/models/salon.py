@@ -1,14 +1,17 @@
-from sqlalchemy import String, Enum, ForeignKey
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.mixins import TimestampMixin
+
 from .base import Base
 from .enums import SalonType
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-    from .user import User
     from .master import Master
     from .service import Service
+    from .user import User
 
 
 class Salon(Base, TimestampMixin):
@@ -22,8 +25,10 @@ class Salon(Base, TimestampMixin):
         Enum(SalonType, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
+    # ИЗМЕНЕНО 22.11.2026: добавлен index=True — список «мои салоны»
+    # фильтруется по owner_id.
     owner_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), nullable=False)
+        ForeignKey("users.id"), nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     owner: Mapped["User"] = relationship(back_populates="salons")

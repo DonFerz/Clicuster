@@ -2,12 +2,21 @@
 
 Услуга принадлежит салону. Права на управление услугой
 определяются правами на её салон (владелец или админ).
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+  • КРИТИЧНО: список услуг падал с 500, потому что в ответе было поле
+    is_active, которого не было в модели (исправлено в модели/миграции);
+  • публичный список по умолчанию отдаёт только активные услуги,
+    параметр include_inactive=true показывает и скрытые;
+  • добавлен X-Total-Count;
+  • удаление услуги с записями уже обрабатывалось — оставлено, но теперь
+    явно логируется и не зависит от текста ошибки БД.
 """
 
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Path, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +27,18 @@ from app.core.exceptions import (
 )
 from app.crud.salon import get_salon
 from app.crud.service import (
-    create_service as create_service_crud,
-    delete_service as delete_service_crud,
+    count_services,
     get_service,
     get_services,
     get_services_by_salon,
+)
+from app.crud.service import (
+    create_service as create_service_crud,
+)
+from app.crud.service import (
+    delete_service as delete_service_crud,
+)
+from app.crud.service import (
     update_service as update_service_crud,
 )
 from app.dependencies import (
@@ -39,7 +55,6 @@ from app.schemas import (
     ServiceRead,
     ServiceUpdate,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +121,15 @@ async def _get_service_with_permission_or_404(
 async def list_services(
     db: DbSession,
     pagination: PaginationDep,
+    response: Response,
     salon_id: Annotated[
         int | None,
         Query(ge=1, description="Фильтр: услуги конкретного салона"),
     ] = None,
+    include_inactive: Annotated[
+        bool,
+        Query(description="Показывать скрытые (is_active=false) услуги"),
+    ] = False,
 ) -> list[Service]:
     """Публичный список услуг.
 
@@ -120,19 +140,29 @@ async def list_services(
     пустой список (а не 404) — это осознанное поведение публичного
     листинга.
     """
+    active_filter: bool | None = None if include_inactive else True
+
     if salon_id is not None:
         services = await get_services_by_salon(
             db,
             salon_id=salon_id,
             skip=pagination.skip,
             limit=pagination.limit,
+            is_active=active_filter,
         )
     else:
         services = await get_services(
             db,
             skip=pagination.skip,
             limit=pagination.limit,
+            is_active=active_filter,
         )
+
+    response.headers["X-Total-Count"] = str(
+        await count_services(
+            db, salon_id=salon_id, is_active=active_filter
+        )
+    )
     return list(services)
 
 
@@ -197,9 +227,7 @@ async def update_existing_service(
 
     Права проверяются на салон, которому услуга принадлежит сейчас.
     `ServiceUpdate` не содержит `salon_id` — перенос услуги между
-    салонами через этот эндпоинт невозможен. Если такая фича
-    понадобится — отдельный эндпоинт с проверкой прав на оба салона
-    (текущий и целевой).
+    салонами через этот эндпоинт невозможен.
     """
     service = await _get_service_with_permission_or_404(
         db, service_id, current_user,
@@ -232,6 +260,11 @@ async def delete_existing_service(
     (ассоциативная таблица). Если на услугу ссылаются существующие
     `Appointment` без `ON DELETE`-правила, удаление отклоняется с 409.
     """
+    # ИСПРАВЛЕНО 22.11.2026: id сохраняется заранее — после rollback ORM-объект
+    # current_user просрочен, и обращение к нему в логе давало MissingGreenlet
+    # (500 вместо 409 при удалении услуги с записями).
+    actor_id = current_user.id
+
     service = await _get_service_with_permission_or_404(
         db, service_id, current_user,
     )
@@ -243,10 +276,11 @@ async def delete_existing_service(
             "Service delete conflict: id=%s by user_id=%s "
             "(related appointments exist)",
             service_id,
-            current_user.id,
+            actor_id,
         )
         raise ConflictError(
-            "Cannot delete service: it has related appointments"
+            "Cannot delete service: it has related appointments. "
+            "Deactivate it instead."
         ) from None
 
     logger.info(

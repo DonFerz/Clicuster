@@ -17,7 +17,6 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic import BaseModel, Field
 
-
 MAX_LIMIT = 100
 
 

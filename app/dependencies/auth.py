@@ -27,7 +27,6 @@ from app.dependencies.db import DbSession
 from app.models.enums import UserRole
 from app.models.user import User
 
-
 __all__ = [
     "CurrentUser",
     "get_current_active_user",
@@ -64,7 +63,10 @@ async def get_current_user(
     try:
         user_id = int(sub)
     except (TypeError, ValueError):
-        raise AuthenticationError("Token 'sub' is not a valid user id")
+        # ИСПРАВЛЕНО 22.11.2026: raise ... from None, чтобы в лог/трейсбек
+        # не попадала цепочка «ValueError → AuthenticationError» (шум + утечка
+        # деталей реализации).
+        raise AuthenticationError("Token 'sub' is not a valid user id") from None
 
     user = await get_user(db, user_id)
     if user is None:

@@ -1,18 +1,18 @@
-"""Initial migration
+"""initial
 
-Revision ID: 072e406ca256
-Revises: 
-Create Date: 2026-08-27 14:23:21.571822
+Revision ID: d23902251914
+Revises:
+Create Date: 2026-09-28 11:57:35.468144+00:00
 
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '072e406ca256'
+revision: str = 'd23902251914'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,10 +27,10 @@ def upgrade() -> None:
     sa.Column('phone', sa.String(length=20), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('hashed_password', sa.String(length=255), nullable=False),
-    sa.Column('role', sa.Enum('ADMIN', 'CLIENT', 'MASTER', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('admin', 'client', 'master', name='userrole'), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
@@ -40,11 +40,11 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('address', sa.String(length=255), nullable=True),
     sa.Column('phone', sa.String(length=20), nullable=True),
-    sa.Column('type', sa.Enum('BARBERSHOP', 'BEAUTY_SALON', 'HAIRDRESSER', name='salontype'), nullable=False),
+    sa.Column('type', sa.Enum('barbershop', 'beauty_salon', 'hairdresser', name='salontype'), nullable=False),
     sa.Column('owner_id', sa.Integer(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -53,11 +53,11 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('salon_id', sa.Integer(), nullable=False),
-    sa.Column('position', sa.Enum('MASTER', 'TOP_MASTER', name='masterposition'), nullable=False),
+    sa.Column('position', sa.Enum('master', 'top_master', name='masterposition'), nullable=False),
     sa.Column('description', sa.String(length=500), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['salon_id'], ['salons.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -71,9 +71,8 @@ def upgrade() -> None:
     sa.Column('description', sa.String(length=500), nullable=True),
     sa.Column('duration_minutes', sa.Integer(), nullable=False),
     sa.Column('price', sa.Integer(), nullable=False),
-    sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['salon_id'], ['salons.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -85,10 +84,10 @@ def upgrade() -> None:
     sa.Column('service_id', sa.Integer(), nullable=False),
     sa.Column('start_time', sa.DateTime(timezone=True), nullable=False),
     sa.Column('end_time', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('status', sa.String(length=50), nullable=False),
+    sa.Column('status', sa.Enum('pending', 'confirmed', 'completed', 'cancelled', name='recordstatus'), nullable=False),
     sa.Column('comment', sa.String(length=500), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['client_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['master_id'], ['masters.id'], ),
     sa.ForeignKeyConstraint(['service_id'], ['services.id'], ),

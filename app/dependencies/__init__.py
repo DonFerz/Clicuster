@@ -16,7 +16,6 @@ from app.dependencies.db import DbSession, get_db
 from app.dependencies.pagination import MAX_LIMIT, Pagination, PaginationDep
 from app.dependencies.redis import RedisDep, get_redis
 
-
 __all__ = [
     # auth
     "CurrentUser",

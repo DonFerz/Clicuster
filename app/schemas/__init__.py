@@ -4,6 +4,9 @@
 Импорт из роутеров:
 
     from app.schemas import UserMe, UserPublic, UserCreate, TokenPair
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления): добавлены новые схемы
+``AppointmentClient`` и ``UserAdminUpdate``.
 """
 
 # ─────────── appointment ───────────
@@ -47,7 +50,9 @@ from app.schemas.service import (
 
 # ─────────── user ───────────
 from app.schemas.user import (
+    AppointmentClient,
     PasswordChange,
+    UserAdminUpdate,
     UserBase,
     UserCreate,
     UserMe,
@@ -55,11 +60,11 @@ from app.schemas.user import (
     UserUpdate,
 )
 
-
 __all__ = [
     # appointment
     "AppointmentBase",
     "AppointmentCreate",
+    "AppointmentClient",
     "AppointmentRead",
     "AppointmentUpdate",
     # auth
@@ -83,6 +88,7 @@ __all__ = [
     "ServiceUpdate",
     # user
     "PasswordChange",
+    "UserAdminUpdate",
     "UserBase",
     "UserCreate",
     "UserMe",

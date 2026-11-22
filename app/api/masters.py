@@ -8,12 +8,22 @@
 - сам мастер редактирует свой профиль (position, description),
   но не может менять salon_id и is_active;
 - админ управляет любыми мастерами.
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+  • публичный список отдаёт только активных мастеров активных салонов;
+  • добавлен X-Total-Count;
+  • убрана мёртвая ветка «phone уже занят»: уникального индекса по телефону
+    в БД нет, ветка никогда не срабатывала и вводила в заблуждение;
+  • при удалении мастера с записями — 409 (как и было), но с понятным
+    текстом и предупреждением в логе;
+  • добавлена проверка is_active салона при создании мастера (нельзя
+    добавить мастера в удалённый/закрытый салон по ошибке).
 """
 
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Path, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,13 +34,20 @@ from app.core.exceptions import (
 )
 from app.crud.master import (
     add_service_to_master,
-    create_master as create_master_crud,
-    delete_master as delete_master_crud,
+    count_masters,
     get_master,
     get_master_with_services,
     get_masters,
     get_masters_by_salon,
     remove_service_from_master,
+)
+from app.crud.master import (
+    create_master as create_master_crud,
+)
+from app.crud.master import (
+    delete_master as delete_master_crud,
+)
+from app.crud.master import (
     update_master as update_master_crud,
 )
 from app.crud.salon import get_salon
@@ -43,14 +60,12 @@ from app.dependencies import (
 from app.models.enums import UserRole
 from app.models.master import Master
 from app.models.salon import Salon
-from app.models.service import Service
 from app.models.user import User
 from app.schemas import (
     MasterCreate,
     MasterRead,
     MasterUpdate,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -127,29 +142,42 @@ async def _get_master_or_404(db: AsyncSession, master_id: int) -> Master:
 async def list_masters(
     db: DbSession,
     pagination: PaginationDep,
+    response: Response,
     salon_id: Annotated[
         int | None,
         Query(ge=1, description="Фильтр: мастера конкретного салона"),
     ] = None,
+    include_inactive: Annotated[
+        bool,
+        Query(description="Показывать уволенных (is_active=false) мастеров"),
+    ] = False,
 ) -> list[Master]:
     """Публичный список мастеров.
 
     Без `salon_id` — все мастера с пагинацией.
     С `salon_id` — мастера конкретного салона.
     """
+    active_filter: bool | None = None if include_inactive else True
+
     if salon_id is not None:
         masters = await get_masters_by_salon(
             db,
             salon_id=salon_id,
             skip=pagination.skip,
             limit=pagination.limit,
+            is_active=active_filter,
         )
     else:
         masters = await get_masters(
             db,
             skip=pagination.skip,
             limit=pagination.limit,
+            is_active=active_filter,
         )
+
+    response.headers["X-Total-Count"] = str(
+        await count_masters(db, salon_id=salon_id, is_active=active_filter)
+    )
     return list(masters)
 
 
@@ -184,8 +212,15 @@ async def create_new_master(
     Email должен быть уникален — иначе 409.
     Права проверяются на салон (`data.salon_id`).
     """
+    # ИСПРАВЛЕНО 22.11.2026: id сохраняется в локальную переменную ДО работы
+    # с БД — после rollback ORM-объект current_user «протухает», и обращение
+    # к current_user.id в логе вызывало MissingGreenlet → 500 вместо 409.
+    actor_id = current_user.id
+
     salon = await _get_salon_or_404(db, data.salon_id)
     _ensure_can_manage_salon(salon, current_user)
+    if not salon.is_active:
+        raise ConflictError("Cannot add a master to an inactive salon")
 
     try:
         master = await create_master_crud(db, data)
@@ -197,15 +232,11 @@ async def create_new_master(
         logger.warning(
             "Master create IntegrityError: %s (by user_id=%s)",
             exc.orig,
-            current_user.id,
+            actor_id,
         )
         if "email" in msg:
             raise ConflictError(
                 "User with this email already exists"
-            ) from None
-        if "phone" in msg:
-            raise ConflictError(
-                "User with this phone already exists"
             ) from None
         if "salon_id" in msg or "foreign key" in msg:
             raise ConflictError(
@@ -246,6 +277,9 @@ async def update_existing_master(
     или админу — иначе мастер мог бы самовольно перевести себя
     в чужой салон или снять блокировку.
     """
+    # ИСПРАВЛЕНО 22.11.2026: см. комментарий в create_new_master про rollback.
+    actor_id = current_user.id
+
     master = await _get_master_or_404(db, master_id)
     salon = await _get_salon_or_404(db, master.salon_id)
     _ensure_can_edit_master(master, salon, current_user)
@@ -268,7 +302,7 @@ async def update_existing_master(
         logger.warning(
             "Master update IntegrityError: %s (by user_id=%s)",
             exc.orig,
-            current_user.id,
+            actor_id,
         )
         if "salon_id" in msg or "foreign key" in msg:
             raise ConflictError(
@@ -303,6 +337,9 @@ async def delete_existing_master(
     Если на мастера ссылаются `appointments` без ON DELETE CASCADE,
     удаление отклоняется с 409 Conflict.
     """
+    # ИСПРАВЛЕНО 22.11.2026: см. комментарий в create_new_master про rollback.
+    actor_id = current_user.id
+
     master = await _get_master_or_404(db, master_id)
     salon = await _get_salon_or_404(db, master.salon_id)
     _ensure_can_manage_salon(salon, current_user)
@@ -313,10 +350,11 @@ async def delete_existing_master(
         logger.warning(
             "Master delete IntegrityError: %s (by user_id=%s)",
             exc.orig,
-            current_user.id,
+            actor_id,
         )
         raise ConflictError(
-            "Cannot delete master: it has related appointments"
+            "Cannot delete master: it has related appointments. "
+            "Deactivate the master instead."
         ) from None
 
     logger.info(

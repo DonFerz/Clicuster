@@ -1,0 +1,45 @@
+# ДОБАВЛЕНО 22.11.2026 (аудит/исправления): в проекте не было конфигурации
+# линтеров и pytest — `ruff`/`black`/`mypy`/`pytest` запускались с настройками
+# по умолчанию, а async-тесты не находили event loop.
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["app/tests"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning:passlib.*",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/tests/*", "venv/*"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",  # длина строки контролируется black
+    "B008",  # Depends() в аргументах — норма для FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+# pydantic-декораторы @computed_field/@property mypy без плагина не понимает.
+disable_error_code = ["prop-decorator", "import-untyped"]
+warn_unused_ignores = false
+check_untyped_defs = true
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]

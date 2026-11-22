@@ -1,4 +1,16 @@
-"""HTTP-роутер аутентификации: регистрация, логин, refresh."""
+"""HTTP-роутер аутентификации: регистрация, логин, refresh.
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+  • на /auth/login и /auth/register добавлен rate limit (защита от подбора
+    пароля и от массовой регистрации с одного IP);
+  • refresh проверяет, что пользователь всё ещё активен, и что это именно
+    refresh-токен (тип уже проверялся в decode_refresh_token);
+  • в ответе /auth/login больше не «светится» разница между «нет такого
+    email» и «неверный пароль» — это было и раньше, но теперь одинаково
+    обрабатываются и заблокированные пользователи;
+  • добавлен сброс счётчика rate limit только при явном решении
+    (см. app/core/rate_limit.py).
+"""
 
 from typing import Annotated
 
@@ -12,6 +24,7 @@ from app.core.auth import (
     register_user,
 )
 from app.core.exceptions import AuthenticationError
+from app.core.rate_limit import login_rate_limit
 from app.core.security import decode_refresh_token
 from app.crud.user import get_user
 from app.dependencies import DbSession
@@ -20,7 +33,6 @@ from app.schemas import (
     TokenPair,
     UserCreate,
 )
-
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,10 +43,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=TokenPair,
     status_code=status.HTTP_201_CREATED,
     summary="Регистрация нового пользователя",
+    dependencies=[Depends(login_rate_limit)],
 )
 async def register(database: DbSession, data: UserCreate) -> TokenPair:
     """Создаёт пользователя и сразу выдаёт пару токенов.
 
+    Новый пользователь всегда получает роль `client`.
     Если email уже занят — 409 Conflict.
     """
     user = await register_user(database, data)
@@ -46,6 +60,7 @@ async def register(database: DbSession, data: UserCreate) -> TokenPair:
     "/login",
     response_model=TokenPair,
     summary="Логин по email и паролю",
+    dependencies=[Depends(login_rate_limit)],
 )
 async def login(
     database: DbSession,
@@ -95,6 +110,7 @@ async def refresh(database: DbSession, data: RefreshRequest) -> TokenPair:
     if user is None:
         raise AuthenticationError("User from refresh token not found")
 
+    # issue_tokens сам проверит is_active и вернёт 401 для заблокированных.
     return issue_tokens(user)
 
 

@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import (
 
 from app.config import settings
 
+# ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+#   • добавлена функция dispose_engine() — корректное закрытие пула при
+#     остановке приложения (иначе остаются висящие соединения);
+#   • get_db явно откатывает транзакцию при исключении и всегда закрывает
+#     сессию (было и раньше, оставлено как защита в глубину: CRUD-слой
+#     коммитит сам и тоже делает rollback при ошибке).
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -34,3 +40,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             await session.rollback()
             raise
+
+
+async def dispose_engine() -> None:
+    """Закрывает пул соединений (вызывается в lifespan приложения)."""
+    await engine.dispose()
