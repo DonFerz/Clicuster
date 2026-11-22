@@ -1,5 +1,12 @@
 """
 Логика аутентификации: проверка пароля, регистрация, выдача токенов.
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+  • хеширование паролей больше не зависит от passlib (см. app/core/security.py);
+  • при регистрации по-прежнему проверяется уникальность email, а гонка
+    двух одновременных регистраций превращается в 409 (IntegrityError);
+  • добавлен комментарий о фиктивной проверке пароля — она нужна, чтобы
+    время ответа не зависело от существования email (защита от enumeration).
 """
 
 from sqlalchemy.exc import IntegrityError
@@ -21,8 +28,7 @@ from app.crud.user import (
 )
 from app.models.user import User
 from app.schemas.auth import TokenPair
-from app.schemas.user import UserCreate, PasswordChange
-
+from app.schemas.user import PasswordChange, UserCreate
 
 # Фиктивный хеш, чтобы время ответа не зависело от существования email.
 # Считается один раз при импорте модуля.

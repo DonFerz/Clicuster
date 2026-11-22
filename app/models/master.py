@@ -1,15 +1,18 @@
-from sqlalchemy import String, Enum, ForeignKey
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.mixins import TimestampMixin
+
 from .base import Base
 from .enums import MasterPosition
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-    from .user import User
+    from .appointment import Appointment
     from .salon import Salon
     from .service import Service
-    from .appointment import Appointment
+    from .user import User
 
 
 class Master(Base, TimestampMixin):
@@ -18,8 +21,10 @@ class Master(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey(
         "users.id"), unique=True, nullable=False)  # один пользователь - один мастер
+    # ИЗМЕНЕНО 22.11.2026: добавлен index=True — выборка мастеров салона
+    # (GET /masters?salon_id=...) раньше шла full scan'ом.
     salon_id: Mapped[int] = mapped_column(
-        ForeignKey("salons.id"), nullable=False)
+        ForeignKey("salons.id"), nullable=False, index=True)
     position: Mapped[MasterPosition] = mapped_column(
         Enum(MasterPosition, values_callable=lambda x: [e.value for e in x]),
         default=MasterPosition.MASTER,

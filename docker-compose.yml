@@ -1,3 +1,16 @@
+# ============================================================
+#  Clicuster — docker compose (dev-стек)
+#
+#  ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+#   • миграции Alembic теперь применяются автоматически при старте API
+#     (scripts/docker-entrypoint.sh), ручной `alembic upgrade head` не нужен;
+#   • порты PostgreSQL и Redis опубликованы только на 127.0.0.1 — раньше
+#     они были доступны всей локальной сети (риск для dev-машины);
+#   • секреты больше не прокидываются в контейнеры postgres/redis через
+#     env_file (там нужны только POSTGRES_*);
+#   • воркер не запускает миграции повторно (RUN_MIGRATIONS=0);
+#   • у API появился healthcheck на /health/ready (проверяет БД).
+# ============================================================
 services:
   api:
     build:
@@ -19,11 +32,18 @@ services:
       redis:
         condition: service_healthy
     volumes:
+      # dev-режим: код монтируется, uvicorn работает с --reload
       - ./app:/app/app
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
       - ./scripts:/app/scripts
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - clicuster_net
 
@@ -39,10 +59,12 @@ services:
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # миграции применяет api, воркеру не нужно
+      RUN_MIGRATIONS: "0"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      api:
         condition: service_healthy
     volumes:
       - ./app:/app/app
@@ -54,18 +76,18 @@ services:
   postgres:
     image: postgres:18-alpine
     container_name: clicuster_db
-    restart: always
-    env_file: .env
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-clicuster_db}
     ports:
-      - "5432:5432"
+      # Только localhost: наружу БД не торчит
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-clicuster_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,14 +98,15 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: clicuster_redis
-    restart: always
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      # Только localhost
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

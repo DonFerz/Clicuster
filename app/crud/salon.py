@@ -1,23 +1,31 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import NotFoundError
 from app.models.salon import Salon
 from app.schemas.salon import SalonCreate, SalonUpdate
+
+# ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+#   • _get_salon_with_owner больше не падает с NoResultFound (→ 500), если
+#     салон удалили параллельно: возвращает None, вызывающий код бросает 404;
+#   • в get_salons добавлен фильтр is_active — публичный список раньше отдавал
+#     и закрытые салоны;
+#   • count_salons — для заголовка X-Total-Count (удобно фронтенду).
 
 
 async def _get_salon_with_owner(
     database: AsyncSession, salon_id: int
-) -> Salon:
+) -> Salon | None:
     """Внутренний хелпер: загружает салон вместе с владельцем."""
     result = await database.execute(
         select(Salon)
         .where(Salon.id == salon_id)
         .options(selectinload(Salon.owner))
     )
-    return result.scalar_one()
+    return result.scalar_one_or_none()
 
 
 async def create_salon(
@@ -39,32 +47,31 @@ async def create_salon(
     except Exception:
         await database.rollback()
         raise
-    return await _get_salon_with_owner(database, salon.id)
+
+    created = await _get_salon_with_owner(database, salon.id)
+    if created is None:  # салон успели удалить между commit и SELECT
+        raise NotFoundError.by_id("Salon", salon.id)
+    return created
 
 
 async def get_salon(database: AsyncSession, salon_id: int) -> Salon | None:
     """Поиск салона по id. Владелец загружается сразу."""
-    result = await database.execute(
-        select(Salon)
-        .where(Salon.id == salon_id)
-        .options(selectinload(Salon.owner))
-    )
-
-    return result.scalar_one_or_none()
+    return await _get_salon_with_owner(database, salon_id)
 
 
 async def get_salons(
     database: AsyncSession,
     skip: int = 0,
     limit: int = 10,
+    *,
+    is_active: bool | None = None,
 ) -> Sequence[Salon]:
     """Список салонов с пагинацией. Владельцы загружаются сразу."""
+    stmt = select(Salon).options(selectinload(Salon.owner))
+    if is_active is not None:
+        stmt = stmt.where(Salon.is_active.is_(is_active))
     result = await database.execute(
-        select(Salon)
-        .options(selectinload(Salon.owner))
-        .order_by(Salon.id)
-        .offset(skip)
-        .limit(limit)
+        stmt.order_by(Salon.id).offset(skip).limit(limit)
     )
 
     return result.scalars().all()
@@ -87,6 +94,21 @@ async def get_salons_by_owner(
     return result.scalars().all()
 
 
+async def count_salons(
+    database: AsyncSession,
+    *,
+    is_active: bool | None = None,
+    owner_id: int | None = None,
+) -> int:
+    """Количество салонов под фильтром (для пагинации)."""
+    stmt = select(func.count()).select_from(Salon)
+    if is_active is not None:
+        stmt = stmt.where(Salon.is_active.is_(is_active))
+    if owner_id is not None:
+        stmt = stmt.where(Salon.owner_id == owner_id)
+    return int((await database.execute(stmt)).scalar_one())
+
+
 async def update_salon(
     database: AsyncSession,
     salon: Salon,
@@ -104,7 +126,10 @@ async def update_salon(
         await database.rollback()
         raise
 
-    return await _get_salon_with_owner(database, salon.id)
+    updated = await _get_salon_with_owner(database, salon.id)
+    if updated is None:
+        raise NotFoundError.by_id("Salon", salon.id)
+    return updated
 
 
 async def delete_salon(database: AsyncSession, salon: Salon) -> None:

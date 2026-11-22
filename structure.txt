@@ -1,97 +1,124 @@
-clicuster_project/
-├── docker-compose.yml
-├── Dockerfile
-├── .env.example
+Clicuster — структура проекта (обновлено 22.11.2026)
+================================================================
+
+Актуальное дерево (без venv/, .git/, __pycache__/).
+Файлы, помеченные [+], добавлены в ходе аудита 22.11.2026.
+Файлы, помеченные [~], существенно переработаны.
+
+Clicuster/
+├── docker-compose.yml            # dev-стек: api, worker, postgres, redis
+├── Dockerfile                    # multi-stage, non-root, авто-миграции
+├── .dockerignore
+├── .env.example                  # шаблон настроек (сгенерируйте SECRET_KEY!)
 ├── .gitignore
 ├── alembic.ini
-├── migrations/
-│   └── versions/               # автоматические миграции Alembic
-├── requirements.txt        # зависимости
-├── requirements-dev.txt    # зависимости для разработки
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # точка входа FastAPI
-│   ├── config.py               # настройки (Pydantic Settings)
-│   ├── database.py             # асинхронный движок SQLAlchemy + сессии
-│   ├── redis_client.py         # подключение к Redis (для кеша + очередей)
-│   ├── models/                 # SQLAlchemy ORM-модели
-│   │   ├── __init__.py
-│   │   ├── user.py             # пользователи (владельцы, мастера, клиенты)
-│   │   ├── salon.py            # салоны / студии
-│   │   ├── master.py           # мастера (сотрудники)
-│   │   ├── service.py          # услуги (название, цена, длительность)
-│   │   ├── appointment.py      # записи клиентов
-│   │   ├── schedule.py         # расписание мастера (рабочие часы, перерывы)
-│   │   └── ...
-│   ├── schemas/                # Pydantic-схемы (вход/выход)
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── user.py
-│   │   ├── salon.py
-│   │   ├── master.py
-│   │   ├── service.py
-│   │   ├── appointment.py
-│   │   └── ...
-│   ├── crud/                   # операции работы с БД (низкоуровневые) CRUD возвращает только ORM-объекты и не вызывает другие CRUD-методы
-│   │   ├── __init__.py
-│   │   ├── user.py
-│   │   ├── salon.py
-│   │   ├── appointment.py
-│   │   └── ...
-│   ├── core/                   # бизнес-логика (сервисный слой)
-│   │   ├── __init__.py
-│   │   ├── auth.py             # регистрация, логин, выдача JWT
-│   │   ├── security.py         # хэширование паролей, проверка прав
-│   │   ├── appointments.py     # проверка доступности, создание записи
-│   │   ├── scheduling.py       # расчёт свободных окон, управление расписанием
-│   │   ├── notifications.py    # отправка уведомлений (email/SMS)
-│   │   ├── exceptions.py       # кастомные классы ошибок
-│   │   └── interfaces/         # для абстракций
-│   ├── api/                    # эндпоинты (роутеры)
-│   │   ├── __init__.py
-│   │   └── v1/                 # версионирование API
-│   │       ├── __init__.py
-│   │       ├── router.py       # сборка всех роутеров версии v1
-│   │       └── endpoints/
-│   │           ├── auth.py
-│   │           ├── users.py
-│   │           ├── salons.py
-│   │           ├── masters.py
-│   │           ├── services.py
-│   │           ├── appointments.py
-│   │           └── health.py
-│   ├── dependencies/           # зависимости для FastAPI (Depends)
-│   │   ├── __init__.py
-│   │   ├── db.py               # получение сессии БД
-│   │   ├── auth.py             # получение текущего пользователя по токену
-│   │   ├── pagination.py       # вывод списка мастеров и услуг
-│   │   └── redis.py            # получение клиента Redis
-│   ├── middleware/             # кастомные middleware
-│   │   ├── __init__.py
-│   │   ├── cors.py             # CORS
-│   │   └── logging.py          # логирование запросов
-│   ├── utils/                  # вспомогательные утилиты
-│   │   ├── __init__.py
-│   │   ├── email.py            # отправка писем (SMTP)
-│   │   ├── sms.py              # отправка SMS (через внешний API)
-│   │   ├── cache.py            # декораторы для кеширования в Redis
-│   │   ├── timezone.py         # работа с часовыми поясами
-│   │   └── exception_handlers.py # глобальный хендлер
-│   ├── tasks/                  # фоновые задачи (через Redis + RQ / ARQ)
-│   │   ├── __init__.py
-│   │   ├── worker.py           # настройка воркера
-│   │   └── jobs.py             # сами задачи (напоминания, очистка и т.п.)
-│   └── tests/                  # тесты (pytest)
-│       ├── __init__.py
-│       ├── conftest.py         # фикстуры для БД, клиента
-│       ├── test_api/
-│       │   ├── test_auth.py
-│       │   └── ...
-│       ├── test_core/
-│       ├── integration/
-│       └── factories/
-├── scripts/                    # одноразовые скрипты (инициализация, сиды)
-│   ├── seed_db.py
-│   └── ...
-├── .env                        # переменные окружения (не коммитится)
-└── README.md
+├── alembic.ini.example
+├── pyproject.toml                # [+] конфиг pytest / ruff / mypy / coverage
+├── requirements.txt              # [~] убран passlib, bcrypt без жёсткого пина
+├── requirements-dev.txt
+├── README.md                     # [~] переписан
+├── ОТЧЁТ_О_ПРОВЕРКЕ.md           # [+] отчёт об аудите: что найдено и исправлено
+├── LICENSE
+├── structure.txt                 # этот файл
+│
+├── alembic/
+│   ├── env.py                    # [~] экранирование % в DATABASE_URL
+│   ├── script.py.mako
+│   └── versions/
+│       ├── 2026_09_28_1157-d23902251914_initial.py
+│       └── 2026_11_22_1200-9f1c2a7b4d10_mvp_fixes.py   # [+] is_active,
+│                                                       #     индексы, EXCLUDE
+├── scripts/
+│   ├── __init__.py               # [+]
+│   ├── create_admin.py           # [+] создание первого администратора
+│   ├── seed_demo.py              # [+] демо-данные
+│   └── docker-entrypoint.sh      # [+] авто-применение миграций в Docker
+│
+└── app/
+    ├── __init__.py
+    ├── main.py                   # [~] lifespan, middleware, ошибки, /health/ready
+    ├── config.py                 # [~] новые настройки и валидаторы
+    ├── database.py               # [~] dispose_engine()
+    ├── redis_client.py           # [~] исправлен settings.REDIS_URL
+    │
+    ├── models/
+    │   ├── __init__.py
+    │   ├── base.py
+    │   ├── mixins.py
+    │   ├── enums.py
+    │   ├── user.py
+    │   ├── salon.py              # [~] индекс по owner_id
+    │   ├── master.py             # [~] индекс по salon_id
+    │   ├── service.py            # [~] добавлена is_active
+    │   └── appointment.py        # [~] CHECK + составные индексы
+    │
+    ├── schemas/
+    │   ├── __init__.py           # [~]
+    │   ├── auth.py
+    │   ├── user.py               # [~] нормализация, UserAdminUpdate, AppointmentClient
+    │   ├── salon.py              # [~] валидаторы, extra=forbid
+    │   ├── service.py            # [~] is_active, extra=forbid
+    │   ├── master.py             # [~] наследует UserCreate, extra=forbid
+    │   └── appointment.py        # [~] AwareDatetime, без client_id по умолчанию
+    │
+    ├── crud/
+    │   ├── __init__.py           # [~]
+    │   ├── user.py               # [~] role, update_user_admin, count_*
+    │   ├── salon.py              # [~] фильтры, NotFoundError вместо 500
+    │   ├── master.py             # [~] lock_master, фильтры, count_*
+    │   ├── service.py            # [~] фильтры is_active, count_*
+    │   └── appointment.py        # [~] list/count, has_overlapping_appointment
+    │
+    ├── core/
+    │   ├── __init__.py
+    │   ├── exceptions.py
+    │   ├── security.py           # [~] bcrypt без passlib, совместимость хешей
+    │   ├── auth.py               # [~] комментарии, прежнее поведение
+    │   ├── rate_limit.py         # [+] защита от подбора пароля
+    │   └── appointments.py       # [+] вся бизнес-логика записи (было пусто)
+    │
+    ├── dependencies/
+    │   ├── __init__.py
+    │   ├── auth.py               # OAuth2, current_user, require_role
+    │   ├── db.py                 # DbSession
+    │   ├── pagination.py         # skip/limit (0..100)
+    │   └── redis.py              # [~] реальный клиент вместо вечного 503
+    │
+    ├── api/
+    │   ├── __init__.py
+    │   ├── auth.py               # [~] rate limit
+    │   ├── users.py              # [~] 409 на дубли, админский PATCH, защита админа
+    │   ├── salons.py             # [~] фильтр is_active, X-Total-Count, 409
+    │   ├── services.py           # [~] include_inactive, X-Total-Count
+    │   ├── masters.py            # [~] include_inactive, X-Total-Count
+    │   └── appointments.py       # [+] роутер записей (было пусто)
+    │
+    ├── middleware/
+    │   ├── __init__.py           # [+]
+    │   ├── logging.py            # [+] X-Request-ID + логи запросов
+    │   └── security.py           # [+] security-заголовки
+    │
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── timezone.py           # [+] to_utc()/utcnow()
+    │   ├── email.py              # (заглушка, см. roadmap)
+    │   ├── sms.py                # (заглушка, см. roadmap)
+    │   └── exception_handlers.py # (обработчики живут в app/main.py)
+    │
+    ├── tasks/
+    │   ├── __init__.py
+    │   ├── worker.py             # заглушка воркера
+    │   └── jobs.py               # (напоминания — roadmap)
+    │
+    └── tests/
+        ├── __init__.py
+        ├── conftest.py           # [+] тестовая БД, миграции, клиент
+        ├── utils.py              # [+] фабрики данных
+        └── test_api/
+            ├── __init__.py       # [+]
+            ├── test_auth.py      # [+] (было пусто)
+            ├── test_users.py     # [+]
+            ├── test_salons.py    # [+]
+            ├── test_services.py  # [+]
+            ├── test_masters.py   # [+]
+            └── test_appointments.py  # [+]

@@ -1,11 +1,18 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.service import Service
 from app.schemas.service import ServiceCreate, ServiceUpdate
 
+# ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+#   • при создании сохраняется is_active (колонка добавлена в модель);
+#   • в списках появился фильтр по активности: публичный прайс больше не
+#     показывает скрытые/архивные услуги;
+#   • update_service обновляет только поля схемы (is_active теперь реально
+#     сохраняется, а не «прилипает» атрибутом в памяти);
+#   • добавлен count_services.
 
 async def create_service(database: AsyncSession, data: ServiceCreate) -> Service:
     """Создание новой услуги."""
@@ -15,6 +22,7 @@ async def create_service(database: AsyncSession, data: ServiceCreate) -> Service
         price=data.price,
         duration_minutes=data.duration_minutes,
         salon_id=data.salon_id,
+        is_active=data.is_active,
     )
     database.add(service)
     try:
@@ -23,6 +31,7 @@ async def create_service(database: AsyncSession, data: ServiceCreate) -> Service
         await database.rollback()
         raise
 
+    await database.refresh(service)
     return service
 
 
@@ -37,10 +46,19 @@ async def get_services(
     database: AsyncSession,
     skip: int = 0,
     limit: int = 20,
+    *,
+    is_active: bool | None = True,
 ) -> Sequence[Service]:
-    """Список услуг с пагинацией."""
+    """Список услуг с пагинацией.
+
+    is_active=True (по умолчанию) — только активные услуги.
+    is_active=None — все (для владельца/админа).
+    """
+    stmt = select(Service)
+    if is_active is not None:
+        stmt = stmt.where(Service.is_active.is_(is_active))
     result = await database.execute(
-        select(Service).order_by(Service.id).offset(skip).limit(limit)
+        stmt.order_by(Service.id).offset(skip).limit(limit)
     )
 
     return result.scalars().all()
@@ -51,17 +69,33 @@ async def get_services_by_salon(
     salon_id: int,
     skip: int = 0,
     limit: int = 20,
+    *,
+    is_active: bool | None = True,
 ) -> Sequence[Service]:
     """Список услуг конкретного салона."""
+    stmt = select(Service).where(Service.salon_id == salon_id)
+    if is_active is not None:
+        stmt = stmt.where(Service.is_active.is_(is_active))
     result = await database.execute(
-        select(Service)
-        .where(Service.salon_id == salon_id)
-        .order_by(Service.id)
-        .offset(skip)
-        .limit(limit)
+        stmt.order_by(Service.id).offset(skip).limit(limit)
     )
 
     return result.scalars().all()
+
+
+async def count_services(
+    database: AsyncSession,
+    *,
+    salon_id: int | None = None,
+    is_active: bool | None = None,
+) -> int:
+    """Количество услуг под фильтром (для пагинации)."""
+    stmt = select(func.count()).select_from(Service)
+    if salon_id is not None:
+        stmt = stmt.where(Service.salon_id == salon_id)
+    if is_active is not None:
+        stmt = stmt.where(Service.is_active.is_(is_active))
+    return int((await database.execute(stmt)).scalar_one())
 
 
 async def update_service(
@@ -81,6 +115,7 @@ async def update_service(
         await database.rollback()
         raise
 
+    await database.refresh(service)
     return service
 
 

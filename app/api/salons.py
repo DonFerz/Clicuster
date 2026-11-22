@@ -1,17 +1,35 @@
-"""HTTP-роутер салонов."""
+"""HTTP-роутер салонов.
+
+ИЗМЕНЕНО 22.11.2026 (аудит/исправления):
+  • публичный GET /salons теперь отдаёт только активные салоны (раньше
+    закрытые салоны «светились» в каталоге);
+  • добавлен заголовок X-Total-Count для пагинации;
+  • DELETE /salons/{id} при связанных записях возвращал 500 — теперь 409;
+  • «мои салоны» отдают и активные, и закрытые (владельцу нужно их видеть);
+  • проверка прав на изменение вынесена в отдельный хелпер и используется
+    всеми методами.
+"""
 
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Path, status
+from fastapi import APIRouter, Path, Response, status
+from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.crud.salon import (
-    create_salon as create_salon_crud,
-    delete_salon as delete_salon_crud,
+    count_salons,
     get_salon,
     get_salons,
     get_salons_by_owner,
+)
+from app.crud.salon import (
+    create_salon as create_salon_crud,
+)
+from app.crud.salon import (
+    delete_salon as delete_salon_crud,
+)
+from app.crud.salon import (
     update_salon as update_salon_crud,
 )
 from app.dependencies import (
@@ -27,7 +45,6 @@ from app.schemas import (
     SalonRead,
     SalonUpdate,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +83,18 @@ def _ensure_can_edit(salon: Salon, user: User) -> None:
 async def list_salons(
     db: DbSession,
     pagination: PaginationDep,
+    response: Response,
 ) -> list[Salon]:
-    """Публичный список салонов с пагинацией.
-
-    Фильтрация по статусу (`is_active` / `is_approved` / ...) — забота
-    `get_salons` в CRUD; роутер лишь прокидывает skip/limit.
-    """
-    salons = await get_salons(db, skip=pagination.skip, limit=pagination.limit)
+    """Публичный список активных салонов с пагинацией."""
+    salons = await get_salons(
+        db,
+        skip=pagination.skip,
+        limit=pagination.limit,
+        is_active=True,
+    )
+    response.headers["X-Total-Count"] = str(
+        await count_salons(db, is_active=True)
+    )
     return list(salons)
 
 
@@ -85,12 +107,16 @@ async def list_my_salons(
     db: DbSession,
     current_user: CurrentUser,
     pagination: PaginationDep,
+    response: Response,
 ) -> list[Salon]:
     salons = await get_salons_by_owner(
         db,
         current_user.id,
         skip=pagination.skip,
         limit=pagination.limit,
+    )
+    response.headers["X-Total-Count"] = str(
+        await count_salons(db, owner_id=current_user.id)
     )
     return list(salons)
 
@@ -183,14 +209,35 @@ async def delete_existing_salon(
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    """Удаляет салон вместе с его мастерами и услугами (cascade)."""
+    """Удаляет салон вместе с его мастерами и услугами (cascade).
+
+    Если в салоне есть записи (appointments), удаление отклоняется с 409 —
+    историю визитов нельзя потерять случайно.
+    """
+    # ИСПРАВЛЕНО 22.11.2026: id сохраняется заранее — после rollback ORM-объект
+    # current_user просрочен, и обращение к нему в логе давало MissingGreenlet
+    # (500 вместо 409 при удалении салона с записями).
+    actor_id = current_user.id
+
     salon = await get_salon(db, salon_id)
     if salon is None:
         raise NotFoundError.by_id("Salon", salon_id)
 
     _ensure_can_edit(salon, current_user)
 
-    await delete_salon_crud(db, salon)
+    try:
+        await delete_salon_crud(db, salon)
+    except IntegrityError:
+        logger.warning(
+            "Salon delete conflict: id=%s by user_id=%s",
+            salon_id,
+            actor_id,
+        )
+        raise ConflictError(
+            "Cannot delete salon: it has related appointments. "
+            "Deactivate it instead."
+        ) from None
+
     logger.info(
         "Salon deleted: id=%s by user_id=%s",
         salon_id,

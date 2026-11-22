@@ -1,14 +1,17 @@
-from sqlalchemy import String, Enum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.mixins import TimestampMixin
+
 from .base import Base
 from .enums import UserRole
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-    from .salon import Salon
     from .appointment import Appointment
     from .master import Master
+    from .salon import Salon
 
 
 class User(Base, TimestampMixin):

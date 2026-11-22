@@ -1,10 +1,10 @@
-from .base import Base
-from .enums import UserRole, SalonType, MasterPosition, RecordStatus
-from .user import User
-from .salon import Salon
-from .master import Master
-from .service import Service
 from .appointment import Appointment
+from .base import Base
+from .enums import MasterPosition, RecordStatus, SalonType, UserRole
+from .master import Master
+from .salon import Salon
+from .service import Service
+from .user import User
 
 __all__ = [
     "Base",
